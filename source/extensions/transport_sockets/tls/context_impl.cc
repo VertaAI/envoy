@@ -1060,7 +1060,7 @@ ServerContextImpl::ServerContextImpl(Stats::Scope& scope,
   // Compute the session context ID hash. We use all the certificate identities,
   // since we should have a common ID for session resumption no matter what cert
   // is used. We do this early because it can throw an EnvoyException.
-  const SessionContextID session_id = generateHashForSessionContextId(server_names);
+  const SessionContextID session_id = generateHashForSessionContextId(server_names, config);
 
   // First, configure the base context for ClientHello interception.
   // TODO(htuch): replace with SSL_IDENTITY when we have this as a means to do multi-cert in
@@ -1143,7 +1143,8 @@ ServerContextImpl::ServerContextImpl(Stats::Scope& scope,
 }
 
 ServerContextImpl::SessionContextID
-ServerContextImpl::generateHashForSessionContextId(const std::vector<std::string>& server_names) {
+ServerContextImpl::generateHashForSessionContextId(const std::vector<std::string>& server_names,
+                                                   const Envoy::Ssl::ServerContextConfig& config) {
   uint8_t hash_buffer[EVP_MAX_MD_SIZE];
   unsigned hash_length;
 
@@ -1222,6 +1223,9 @@ ServerContextImpl::generateHashForSessionContextId(const std::vector<std::string
     }
   }
 
+  // Back porting note: Here begins the code that v1.18 factors out as
+  // DefaultCertValidator::updateDigestForSessionId().
+
   // Hash all the settings that affect whether the server will allow/accept
   // the client connection. This ensures that the client is always validated against
   // the correct settings, even if session resumption across different listeners
@@ -1255,6 +1259,39 @@ ServerContextImpl::generateHashForSessionContextId(const std::vector<std::string
                               sizeof(std::remove_reference<decltype(hash)>::type::value_type));
     RELEASE_ASSERT(rc == 1, Utility::getLastCryptoError().value_or(""));
   }
+
+  rc = EVP_DigestUpdate(md.get(), &verify_trusted_ca_, sizeof(verify_trusted_ca_));
+  RELEASE_ASSERT(rc == 1, Utility::getLastCryptoError().value_or(""));
+
+  const auto cvc_config = config.certificateValidationContext();
+  if (cvc_config != nullptr) {
+    for (const auto& matcher : cvc_config->subjectAltNameMatchers()) {
+      size_t hash = MessageUtil::hash(matcher);
+      rc = EVP_DigestUpdate(md.get(), &hash, sizeof(hash));
+      RELEASE_ASSERT(rc == 1, Utility::getLastCryptoError().value_or(""));
+    }
+
+    const std::string& crl = cvc_config->certificateRevocationList();
+    if (!crl.empty()) {
+      rc = EVP_DigestUpdate(md.get(), crl.data(), crl.length());
+      RELEASE_ASSERT(rc == 1, Utility::getLastCryptoError().value_or(""));
+    }
+
+    bool allow_expired = cvc_config->allowExpiredCertificate();
+    rc = EVP_DigestUpdate(md.get(), &allow_expired, sizeof(allow_expired));
+    RELEASE_ASSERT(rc == 1, Utility::getLastCryptoError().value_or(""));
+
+    auto trust_chain_verification = cvc_config->trustChainVerification();
+    rc = EVP_DigestUpdate(md.get(), &trust_chain_verification, sizeof(trust_chain_verification));
+    RELEASE_ASSERT(rc == 1, Utility::getLastCryptoError().value_or(""));
+
+    // Back porting note: onlyVerifyLeafCertificateCrl isn't implemented.
+    // Hence we comment these lines here to disable them.
+    // auto only_leaf_crl = config_->onlyVerifyLeafCertificateCrl();
+    // rc = EVP_DigestUpdate(md.get(), &only_leaf_crl, sizeof(only_leaf_crl));
+    // RELEASE_ASSERT(rc == 1, Utility::getLastCryptoError().value_or(""));
+  }
+  // Back porting note: Here ends the DefaultCertValidator::updateDigestForSessionId() code.
 
   // Hash configured SNIs for this context, so that sessions cannot be resumed across different
   // filter chains, even when using the same server certificate.
