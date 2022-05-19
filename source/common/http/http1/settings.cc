@@ -20,7 +20,7 @@ Http1Settings parseHttp1Settings(const envoy::config::core::v3::Http1ProtocolOpt
   if (config.header_key_format().has_proper_case_words()) {
     ret.header_key_format_ = Http1Settings::HeaderKeyFormat::ProperCase;
   } else if (config.header_key_format().has_custom()) {
-    ret.header_key_format = Http1Settings::HeaderKeyFormat::Custom;
+    ret.header_key_format_ = Http1Settings::HeaderKeyFormat::Custom;
     const auto &rules = config.header_key_format().custom().rules();
     // Transform rules, inserting new elements into ret.header_key_format_rules map...
     std::transform(rules.cbegin(), rules.cend(),

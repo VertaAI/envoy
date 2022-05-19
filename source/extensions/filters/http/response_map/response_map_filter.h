@@ -2,8 +2,8 @@
 
 #include "envoy/http/filter.h"
 
-#include "common/buffer/buffer_impl.h"
-#include "common/response_map/response_map.h"
+#include "source/common/buffer/buffer_impl.h"
+#include "source/common/response_map/response_map.h"
 
 namespace Envoy {
 namespace Extensions {
@@ -98,7 +98,7 @@ public:
   }
 
   // Http::StreamEncoderFilter
-  Http::FilterHeadersStatus encode100ContinueHeaders(Http::ResponseHeaderMap&) override {
+  Http::FilterHeadersStatus encode1xxHeaders(Http::ResponseHeaderMap&) override {
     return Http::FilterHeadersStatus::Continue;
   }
   Http::FilterHeadersStatus encodeHeaders(Http::ResponseHeaderMap& headers,
