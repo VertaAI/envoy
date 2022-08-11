@@ -39,14 +39,12 @@ ResponseMapFilter::ResponseMapFilter(ResponseMapFilterConfigSharedPtr config) : 
  * Get FilterConfigPerRoute if one exists for the current route.
  */
 const FilterConfigPerRoute* ResponseMapFilter::getRouteSpecificConfig(void) {
-  const auto& route = encoder_callbacks_->route();
-  if (route == nullptr) {
+  if (encoder_callbacks_->route() == nullptr) {
     return nullptr;
   }
 
   const auto* per_route_config =
-      Http::Utility::resolveMostSpecificPerFilterConfig<FilterConfigPerRoute>(
-          Extensions::HttpFilters::HttpFilterNames::get().ResponseMap, route);
+      Http::Utility::resolveMostSpecificPerFilterConfig<FilterConfigPerRoute>(encoder_callbacks_);
   ENVOY_LOG(trace, "response map filter: found route. has per_route_config? {}",
             per_route_config != nullptr);
 
